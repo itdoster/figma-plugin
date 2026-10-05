@@ -748,6 +748,93 @@ server.tool(
   }
 );
 
+// Execute Code Tool
+server.tool(
+  "execute_code",
+  `Run arbitrary JavaScript inside the Figma plugin sandbox with full Plugin API access.
+The code is the BODY of an async function with two arguments: \`figma\` (Plugin API) and \`params\` (the optional params object you pass). Use \`await\` freely and \`return\` a JSON-serializable value (node objects are returned as {id, name, type}).
+Use it for anything the dedicated tools cannot do: loading fonts (await figma.loadFontAsync({family:"Open Sans", style:"ExtraBold"})), gradient fills, text strokes, effects (shadows), letter spacing, importing library components by key (figma.importComponentByKeyAsync), reparenting (parent.appendChild), etc.
+Remember: nodes inside instances are addressed by ids like "I<instance>;<child>"; get nodes via await figma.getNodeByIdAsync(id). Changes are real edits of the user's file.`,
+  {
+    code: z.string().describe("Body of an async function (figma, params) => { ... }; must return JSON-serializable data"),
+    params: z.record(z.any()).optional().describe("Optional data passed to the code as `params`"),
+    timeoutMs: z.number().positive().optional().describe("Timeout in milliseconds (default 60000)"),
+  },
+  async ({ code, params, timeoutMs }: any) => {
+    try {
+      const result = await sendCommandToFigma(
+        "execute_code",
+        { code, params: params ?? {} },
+        timeoutMs ?? 60000
+      );
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify(result, null, 2)
+          }
+        ]
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error executing code: ${error instanceof Error ? error.message : String(error)}`
+          }
+        ]
+      };
+    }
+  }
+);
+
+// Set Image Fill Tool
+server.tool(
+  "set_image_fill",
+  "Set an image (PNG/JPG/GIF from a local file path) as the fill of a node in Figma. Replaces existing fills unless append=true.",
+  {
+    nodeId: z.string().describe("The ID of the node to fill (rectangle, frame, ellipse...)"),
+    filePath: z.string().describe("Absolute path to a local PNG/JPG/GIF file"),
+    scaleMode: z.enum(["FILL", "FIT", "CROP", "TILE"]).optional().describe("Image scale mode (default FILL)"),
+    append: z.boolean().optional().describe("Keep existing fills and add the image on top"),
+    resizeToImage: z.boolean().optional().describe("Resize the node to the image's native size"),
+  },
+  async ({ nodeId, filePath, scaleMode, append, resizeToImage }: any) => {
+    try {
+      const { readFile } = await import("node:fs/promises");
+      const bytes = await readFile(filePath);
+      const result = await sendCommandToFigma(
+        "set_image_fill",
+        {
+          nodeId,
+          imageBase64: bytes.toString("base64"),
+          scaleMode: scaleMode ?? "FILL",
+          append: append ?? false,
+          resizeToImage: resizeToImage ?? false,
+        },
+        60000
+      );
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify(result)
+          }
+        ]
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error setting image fill: ${error instanceof Error ? error.message : String(error)}`
+          }
+        ]
+      };
+    }
+  }
+);
+
 // Resize Node Tool
 server.tool(
   "resize_node",
@@ -2648,7 +2735,9 @@ type FigmaCommand =
   | "set_default_connector"
   | "create_connections"
   | "set_focus"
-  | "set_selections";
+  | "set_selections"
+  | "execute_code"
+  | "set_image_fill";
 
 type CommandParams = {
   get_document_info: Record<string, never>;

@@ -4,10 +4,13 @@ FROM oven/bun:latest
 # Set the working directory in the container
 WORKDIR /app
 
-# Copy the current directory contents into the container at /app
-COPY package*.json ./
+# Copy dependency manifests for better layer caching
+COPY package*.json bun.lock ./
 
 RUN bun install
+
+# Copy the rest of the source code
+COPY . .
 
 # Expose the port on which the API will listen
 EXPOSE 3055

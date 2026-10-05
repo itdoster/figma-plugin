@@ -233,12 +233,71 @@ async function handleCommand(command, params) {
       return await setFocus(params);
     case "set_selections":
       return await setSelections(params);
+    case "execute_code":
+      return await executeCode(params);
+    case "set_image_fill":
+      return await setImageFill(params);
     default:
       throw new Error(`Unknown command: ${command}`);
   }
 }
 
 // Command implementations
+
+// Plugin API objects are not structured-cloneable, so nodes in the result are reduced to {id, name, type}.
+function toSerializable(value, depth = 0) {
+  if (value === null || value === undefined) return value;
+  if (depth > 8) return "[max depth]";
+  if (typeof value === "function") return undefined;
+  if (typeof value === "symbol") return value.toString();
+  if (typeof value !== "object") return value;
+  if (value instanceof Uint8Array) return { bytes: value.length };
+  if (typeof value.id === "string" && typeof value.type === "string" && "parent" in value) {
+    return { id: value.id, name: value.name, type: value.type };
+  }
+  if (Array.isArray(value)) return value.map((item) => toSerializable(item, depth + 1));
+  const out = {};
+  for (const key of Object.keys(value)) {
+    const serialized = toSerializable(value[key], depth + 1);
+    if (serialized !== undefined) out[key] = serialized;
+  }
+  return out;
+}
+
+async function executeCode(params) {
+  const { code, params: userParams } = params || {};
+  if (typeof code !== "string" || !code.trim()) {
+    throw new Error("Missing code parameter");
+  }
+  const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
+  let fn;
+  try {
+    fn = new AsyncFunction("figma", "params", code);
+  } catch (error) {
+    throw new Error(`Syntax error: ${error.message || String(error)}`);
+  }
+  try {
+    const result = await fn(figma, userParams || {});
+    return { success: true, result: toSerializable(result) };
+  } catch (error) {
+    throw new Error(`${error.message || String(error)}${error.stack ? `\n${error.stack}` : ""}`);
+  }
+}
+
+async function setImageFill(params) {
+  const { nodeId, imageBase64, scaleMode = "FILL", append = false, resizeToImage = false } = params || {};
+  if (!nodeId) throw new Error("Missing nodeId parameter");
+  if (!imageBase64) throw new Error("Missing imageBase64 parameter");
+  const node = await figma.getNodeByIdAsync(nodeId);
+  if (!node) throw new Error(`Node not found with ID: ${nodeId}`);
+  if (!("fills" in node)) throw new Error(`Node does not support fills: ${nodeId}`);
+  const image = figma.createImage(figma.base64Decode(imageBase64));
+  const { width, height } = await image.getSizeAsync();
+  const paint = { type: "IMAGE", imageHash: image.hash, scaleMode };
+  node.fills = append ? [...node.fills, paint] : [paint];
+  if (resizeToImage && "resize" in node) node.resize(width, height);
+  return { id: node.id, name: node.name, imageHash: image.hash, imageWidth: width, imageHeight: height };
+}
 
 async function getDocumentInfo() {
   await figma.currentPage.loadAsync();
