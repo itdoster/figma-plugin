@@ -1,19 +1,13 @@
-# Use the Bun image as the base image
-FROM oven/bun:latest
+# Ретранслятор WebSocket между MCP-сервером и плагином Figma (src/socket.ts).
+# MCP-сервер в контейнер не кладём: его запускает Claude Code по stdio, а set_image_fill читает файлы с диска хоста.
+FROM oven/bun:1-alpine
 
-# Set the working directory in the container
 WORKDIR /app
 
-# Copy dependency manifests for better layer caching
-COPY package*.json bun.lock ./
+# socket.ts зависит только от встроенного API Bun, зависимости из package.json ему не нужны
+COPY src/socket.ts ./socket.ts
 
-RUN bun install
-
-# Copy the rest of the source code
-COPY . .
-
-# Expose the port on which the API will listen
+ENV PORT=3055
 EXPOSE 3055
 
-# Run the server when the container launches
-CMD ["bun", "src/talk_to_figma_mcp/server.ts"]
+CMD ["bun", "socket.ts"]

@@ -77,13 +77,17 @@ Figma Desktop → меню **Plugins → Development → Import plugin from mani
 
 ## Запуск (каждый раз)
 
-1. **Ретранслятор** — в отдельном терминале, из папки репозитория:
+1. **Ретранслятор** — один из двух способов:
 
-   ```bash
-   bun socket
-   ```
+   - **Docker (рекомендуется)** — см. раздел [«Ретранслятор в Docker»](#ретранслятор-в-docker). Поднимается один раз
+     и дальше стартует сам вместе с Docker, этот шаг можно пропускать.
+   - **Вручную** — в отдельном терминале, из папки репозитория:
 
-   Ждём строку `WebSocket server running on port 3055`. Терминал не закрывать.
+     ```bash
+     bun socket
+     ```
+
+     Ждём строку `WebSocket server running on port 3055`. Терминал не закрывать.
 
 2. **Плагин** — открыть нужный файл в Figma Desktop → **Plugins → Development → Cursor MCP Plugin LOCAL** →
    **Connect**. Плагин покажет `Connected to server in channel: <id>`. Id новый при каждом запуске.
@@ -95,13 +99,42 @@ Figma Desktop → меню **Plugins → Development → Import plugin from mani
    execute_code("return figma.root.name")   →  имя открытого файла
    ```
 
+## Ретранслятор в Docker
+
+В контейнере живёт только ретранслятор `src/socket.ts`. MCP-сервер остаётся на хосте: его запускает Claude
+Code по stdio, а `set_image_fill` читает картинки с диска хоста. Плагин работает в Figma Desktop.
+
+Нужен Docker Desktop (macOS / Windows) или Docker Engine (Linux).
+
+```bash
+cd figma-plugin
+docker compose up -d --build
+```
+
+Проверка:
+
+```bash
+docker logs figma-relay      # WebSocket server running on port 3055
+```
+
+Контейнер поднят с `restart: unless-stopped`: после перезагрузки он стартует сам, как только запустится Docker.
+`bun socket` при этом запускать не нужно, а если он запущен, то займёт тот же порт, и контейнер не поднимется.
+
+| Действие | Команда |
+|---|---|
+| остановить | `docker compose down` |
+| пересобрать после правки `src/socket.ts` | `docker compose up -d --build` |
+
+Порт менять нельзя: MCP-сервер на localhost всегда подключается к 3055.
+
 ## Если не работает
 
 | Симптом | Причина и что делать |
 |---|---|
 | `Unknown command: execute_code` | запущен Community-плагин, а не локальный. Запускать **Cursor MCP Plugin LOCAL** из Development |
 | `Request to Figma timed out` | плагин закрылся или Figma ушла в фон надолго. Перезапусти плагин и пришли новый id канала |
-| плагин не подключается | не запущен `bun socket`, или порт 3055 занят другим процессом |
+| плагин не подключается | ретранслятор не запущен (`docker ps` не показывает `figma-relay`, и `bun socket` не запущен), или порт 3055 занят другим процессом: `lsof -iTCP:3055` (macOS / Linux), `netstat -ano \| findstr 3055` (Windows) |
+| `docker compose up` падает с `port is already allocated` | на 3055 уже работает `bun socket` — останови его |
 | `manifest.containsWidget` | импортировал как widget. Нужно **Import plugin from manifest** |
 | в Claude Code нет инструментов TalkToFigma | `/mcp` → reconnect. Проверь, что путь в `claude mcp get TalkToFigma` указывает на существующий `dist/server.js` |
 | WSL на Windows: плагин не видит ретранслятор | в `src/socket.ts` раскомментировать `hostname: "0.0.0.0"` |
@@ -121,7 +154,7 @@ Figma Desktop → меню **Plugins → Development → Import plugin from mani
 |---|---|
 | `src/talk_to_figma_mcp/server.ts` | `bun run build`, затем в Claude Code `/mcp` → reconnect |
 | `src/cursor_mcp_plugin/code.js` или `ui.html` | закрыть и снова запустить плагин в Figma, сборка не нужна |
-| `src/socket.ts` | перезапустить `bun socket` |
+| `src/socket.ts` | перезапустить `bun socket` или `docker compose up -d --build` |
 
 Новая команда добавляется в двух местах: инструмент в `server.ts` (`server.tool(...)` плюс имя в
 типе `FigmaCommand`) и ветка `case` в `handleCommand` плагина `code.js`.

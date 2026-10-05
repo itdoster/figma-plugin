@@ -1,0 +1,7 @@
+services:
+  figma-relay:
+    build: .
+    container_name: figma-relay
+    restart: unless-stopped
+    ports:
+      - "3055:3055"
