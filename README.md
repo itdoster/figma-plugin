@@ -32,9 +32,11 @@ Claude Code ──stdio──▶ MCP-сервер (dist/server.js) ──ws://lo
 
 ## Установка (один раз)
 
-Нужны: [Bun](https://bun.sh), Node.js 18+, Figma Desktop, Claude Code.
+Нужны: Git, Node.js 18+, Docker Desktop, Figma Desktop, Claude Code. [Bun](https://bun.sh) — только если ретранслятор запускаешь без Docker или правишь сервер.
 
-**1. Bun**
+**Проще всего — попросить Claude Code поставить всё самому:** в проекте со скиллом `figma-design` агент сам клонирует форк, поднимет ретранслятор в Docker и пропишет MCP. Руками останутся `/mcp` → reconnect и импорт плагина в Figma.
+
+**1. Bun (необязательно)**
 
 ```bash
 # macOS / Linux
@@ -48,7 +50,7 @@ powershell -c "irm bun.sh/install.ps1 | iex"
 ```bash
 git clone https://github.com/itdoster/figma-plugin.git
 cd figma-plugin
-bun install
+npm install --omit=dev
 ```
 
 Сборка `dist/` уже лежит в репозитории. Пересобирать (`bun run build`) нужно только после правки
